@@ -6,3 +6,4 @@ data/processed/
 reports/*.html
 reports/*.xlsx
 .env
+data/external/

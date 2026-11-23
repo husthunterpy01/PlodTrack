@@ -19,6 +19,9 @@ def detect(df):
             out.append((r.plod_id, "IMPLAUSIBLE_RATE",
                         f"{r.metres_drilled} m in {r.hours_worked - r.standby_hours:.1f} productive h "
                         f"= {r.mph:.1f} m/h (max {MAX_MPH[r.drill_type]} for {r.drill_type})"))
+        if pd.notna(getattr(r, "max_depth_m", None)) and r.metres_drilled > r.max_depth_m + 0.5:  # tolerance: source depths are float32
+            out.append((r.plod_id, "EXCEEDS_HOLE_DEPTH",
+                        f"{r.metres_drilled} m drilled but registered hole depth is {r.max_depth_m} m"))
         if r.standby_hours > r.hours_worked:
             out.append((r.plod_id, "STANDBY_EXCEEDS_HOURS", f"{r.standby_hours} > {r.hours_worked}"))
 
@@ -30,7 +33,7 @@ def detect(df):
         mad = (g["cpm"] - med).abs().median() or 1e-9
         z = 0.6745 * (g["cpm"] - med) / mad
         for pid, zi, cpm in zip(g["plod_id"], z, g["cpm"]):
-            if abs(zi) > 3.5:
+            if abs(zi) > 3.5 and abs(cpm - med) / med > 0.5:  # statistically AND practically unusual
                 out.append((pid, "COST_PER_METRE_OUTLIER",
                             f"${cpm:,.0f}/m vs median ${med:,.0f}/m for {dtype} (robust z={zi:.1f})"))
     return out
@@ -38,7 +41,8 @@ def detect(df):
 
 def main(db_path="data/processed/plods.db"):
     conn = sqlite3.connect(db_path)
-    df = pd.read_sql("SELECT * FROM drill_plods", conn)
+    df = pd.read_sql("""SELECT p.*, h.max_depth_m FROM drill_plods p
+                        LEFT JOIN holes h ON h.hole_id = p.hole_id""", conn)
     flags = detect(df)
     conn.execute("DELETE FROM anomalies")
     conn.executemany("INSERT INTO anomalies (plod_id, rule, detail) VALUES (?,?,?)", flags)

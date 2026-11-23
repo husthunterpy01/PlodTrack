@@ -6,10 +6,23 @@ from pathlib import Path
 
 import pandas as pd
 
+HOLES_CSV = Path(__file__).resolve().parents[2] / "data" / "external" / "wa_drillholes" / "holes.csv"
+
+
+def real_holes(n=600):
+    """Real WA collars (unique IDs, RC/DD/AC only, sensible depth) to attach synthetic plods to."""
+    if not HOLES_CSV.exists():
+        return None
+    h = pd.read_csv(HOLES_CSV)
+    h = h[~h["holeid"].duplicated(keep=False) & h["holetype"].isin(["RC", "DD", "AC"])
+          & h["maxdepth"].between(5, 400)]
+    return h.sample(min(n, len(h)), random_state=7).to_dict("records") or None
+
+
 RATES = {"Outback Drilling": 95, "Kalgoorlie RC Services": 88}  # AUD per hour-ish
 
 
-def _rows(contractor, rig_prefix, n_days, seed):
+def _rows(contractor, rig_prefix, n_days, seed, holes=None):
     rng = random.Random(seed)
     start = date(2026, 9, 1)
     rows = []
@@ -18,14 +31,21 @@ def _rows(contractor, rig_prefix, n_days, seed):
         day = start + timedelta(days=d)
         for shift in ("DAY", "NIGHT"):
             for rig in (f"{rig_prefix}1", f"{rig_prefix}2"):
-                dt = rng.choice(["RC", "RC", "RC", "DD", "AC"])
+                real = holes[hole - 1] if holes else None
+                dt = real["holetype"] if real else rng.choice(["RC", "RC", "RC", "DD", "AC"])
                 hours = round(rng.uniform(9, 11.5), 1)
                 standby = round(rng.choice([0, 0, 0.5, 1, 2]), 1)
                 mph = {"RC": 9, "DD": 3.5, "AC": 14}[dt]
-                metres = round(max(0, (hours - standby) * rng.gauss(mph, mph * 0.12)), 1)
+                metres = max(0, (hours - standby) * rng.gauss(mph, mph * 0.12))
+                if real and metres > real["maxdepth"]:
+                    # Shallow real hole: can't drill deeper than it, and the plod is correspondingly short.
+                    metres = real["maxdepth"]
+                    standby = 0.0
+                    hours = round(max(1.5, metres / mph + 1.0), 1)
+                metres = round(metres, 1)
                 cost = round(hours * RATES[contractor] * (1.6 if dt == "DD" else 1) * rng.uniform(0.97, 1.03)
                              + metres * 4, 2)
-                rows.append(dict(date=day, shift=shift, rig=rig, hole=f"VGR{26000 + hole:05d}", type=dt,
+                rows.append(dict(date=day, shift=shift, rig=rig, hole=real["holeid"] if real else f"VGR{26000 + hole:05d}", type=dt,
                                  metres=metres, hours=hours, standby=standby, cost=cost))
                 hole += 1
     return rows
@@ -36,7 +56,8 @@ def main(out_dir="data/raw"):
     out.mkdir(parents=True, exist_ok=True)
 
     # Contractor A: tidy-ish columns
-    a = pd.DataFrame(_rows("Outback Drilling", "OB", 30, 1))
+    holes = real_holes()
+    a = pd.DataFrame(_rows("Outback Drilling", "OB", 30, 1, holes[:240] if holes else None))
     a.loc[40, "metres"] = 412.0          # implausible metres
     a.loc[55, "cost"] = a.loc[55, "cost"] * 6  # cost spike
     a.loc[60, "hours"] = 0               # invalid
@@ -47,7 +68,7 @@ def main(out_dir="data/raw"):
     a.to_excel(out / "outback_drilling_sep2026.xlsx", index=False, sheet_name="Plods")
 
     # Contractor B: different headers, title rows above the table, text dates
-    b = pd.DataFrame(_rows("Kalgoorlie RC Services", "KR", 30, 2))
+    b = pd.DataFrame(_rows("Kalgoorlie RC Services", "KR", 30, 2, holes[240:480] if holes else None))
     b["date"] = b["date"].map(lambda d: d.strftime("%d/%m/%Y"))
     b.loc[12, "type"] = "rc "            # messy casing/whitespace
     b = b.rename(columns={"date": "Plod Date", "shift": "Shift", "rig": "Rig No.", "hole": "Hole",

@@ -1,4 +1,17 @@
 -- PlodTrack schema (SQLite)
+-- Real collar data (WA DMIRS-046, CC BY 4.0). hole_id is unique here; ambiguous IDs are excluded on load.
+CREATE TABLE IF NOT EXISTS holes (
+    hole_id      TEXT PRIMARY KEY,
+    hole_type    TEXT,
+    max_depth_m  REAL,
+    operator     TEXT,
+    project      TEXT,
+    latitude     REAL,
+    longitude    REAL,
+    drilled_from DATE,
+    drilled_to   DATE
+);
+
 CREATE TABLE IF NOT EXISTS drill_plods (
     plod_id        INTEGER PRIMARY KEY AUTOINCREMENT,
     source_file    TEXT NOT NULL,

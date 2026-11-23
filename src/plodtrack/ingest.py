@@ -23,6 +23,7 @@ CONTRACTORS = {
 }
 REQUIRED = ["plod_date", "shift", "rig_id", "hole_id", "drill_type", "metres_drilled",
             "hours_worked", "cost_aud"]
+HOLES_CSV = Path(__file__).resolve().parents[2] / "data" / "external" / "wa_drillholes" / "holes.csv"
 SCHEMA = Path(__file__).resolve().parents[2] / "sql" / "schema.sql"
 
 
@@ -104,10 +105,28 @@ def ingest_file(conn, path):
     return len(good), len(rejected)
 
 
+def load_holes(conn, csv_path):
+    """Load real WA drillhole collars. Hole IDs that appear more than once are ambiguous and skipped."""
+    h = pd.read_csv(csv_path)
+    ambiguous = h["holeid"].duplicated(keep=False)
+    h = h[~ambiguous].copy()
+    for c in ("period_from", "period_to"):
+        h[c] = pd.to_datetime(h[c], unit="ms", errors="coerce").dt.strftime("%Y-%m-%d")
+    conn.execute("DELETE FROM holes")
+    conn.executemany(
+        "INSERT INTO holes VALUES (?,?,?,?,?,?,?,?,?)",
+        h[["holeid", "holetype", "maxdepth", "operator", "project", "latitude", "longitude",
+           "period_from", "period_to"]].itertuples(index=False, name=None))
+    return len(h), int(ambiguous.sum())
+
+
 def main(raw_dir="data/raw", db_path="data/processed/plods.db"):
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA.read_text())
+    if HOLES_CSV.exists():
+        n, skipped = load_holes(conn, HOLES_CSV)
+        print(f"holes: loaded {n} real drillholes ({skipped} ambiguous duplicate-ID rows skipped)")
     for f in sorted(Path(raw_dir).glob("*.xlsx")):
         ok, bad = ingest_file(conn, f)
         print(f"{f.name}: loaded {ok}, rejected {bad}")
