@@ -173,6 +173,36 @@ Tested live against Groq (`openai/gpt-oss-120b`, set `GROQ_API_KEY`) with 5 repo
 
 Limits: 5 hand-written reports is a smoke test, not an accuracy benchmark. Results can vary between models and runs. Records that pass are returned but not yet loaded into the database.
 
+## Conclusions from the data
+
+These describe how the pipeline behaves on the bundled **synthetic** dataset (239 plods, Sep 2026), not real operations.
+
+**What the numbers show**
+- **Scale:** 13,252 m for $216,602 (**$16.34/m**) over 1,632 hours, about 8 plods a day.
+- **Contractors are close:** Kalgoorlie RC Services $15.86/m (3.8% standby) vs Outback Drilling $16.76/m (2.9% standby), a 5% gap.
+- **Drill type drives cost:**
+
+  | Type | Share of metres | Share of cost | Median $/m | Median m/h |
+  |---|---|---|---|---|
+  | RC | 65% | 59% | 15.6 | 8.1 |
+  | AC | 29% | 24% | 13.0 | 10.3 |
+  | DD | 5% | 16% | 49.8 | 3.3 |
+
+  Diamond drilling is about 3.2x the cost per metre of RC, which is why the cost outlier rule compares plods *within* each drill type.
+- **Shifts are balanced:** day 6,672 m vs night 6,580 m.
+- **Standby is minor:** 54.5 h of 1,632 h (3.3%), on 19% of plods.
+- **Daily output is steady:** median 444 m (range 298-754 m). The 754 m peak and the $7.61/m dip on 11 Sep are the same planted 412 m plod.
+- **Data quality:** 2 rows rejected (1 duplicate, 1 zero hours) and 6 plods flagged (2.5%): 6 cost-per-metre outliers, 1 implausible rate, 1 hole-depth breach.
+
+**What it says about the pipeline**
+- Every planted problem was caught, and outliers such as $76/m against a $13/m median were flagged.
+- Flags still need a human decision. A $50/m diamond plod is normal for DD, so a single global cost threshold would be wrong.
+
+**What cannot be concluded**
+- Contractor rates, the 1.6x diamond multiplier and drilling speeds are set in `generate_sample_data.py`, so contractor and drill-type differences are built in, not findings about real contractors.
+- 67.8% of plods reaching their registered hole depth is a generator artifact (shallow real holes are capped at their depth).
+- One month of data: no trend, budget or inventory analysis is possible.
+
 ## Ideas to extend
 - Add a costs/budget table and variance-to-budget view
 - Mining inventory (stockpile tonnes & grade) tables
