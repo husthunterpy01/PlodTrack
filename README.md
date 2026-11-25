@@ -4,6 +4,8 @@ A small project for tracking exploration drilling and costs: ingest messy contra
 store them in a SQL database, flag unusual entries, and produce dashboards and reports.
 The bundled sample data is **synthetic**.
 
+**Live demo:** https://husthunterpy01.github.io/mining_analysis/ (interactive filters, charts and a map of the real WA holes; built by `python -m plodtrack.build_site` into `docs/index.html`).
+
 | Capability | Where it lives |
 |---|---|
 | Ingest contractor Excel files with less manual entry | `src/plodtrack/ingest.py` – per-contractor column mapping, title-row detection, cleaning, validation, idempotent reload |
@@ -24,6 +26,38 @@ The bundled sample data is **synthetic**.
 The two contractors deliberately use **different layouts**, like real life. One has a plain header row (`Date`, `Metres`, `Cost ($)`), the other has title rows above the header and different names (`Plod Date`, `Total Metres`, `Invoice AUD`, `01/09/2026` dates). A few bad rows are planted so the pipeline has something to catch. Synthetic plods are attached to real hole IDs, so costs, dates and productivity are **not real operational figures**.
 
 After the pipeline runs, `data/processed/plods.db` holds 239 clean plods, 5,824 holes, 8 flagged anomalies and 2 rejected rows.
+
+## Data preprocessing
+
+Each step below was chosen after inspecting the raw files, not assumed. All of it runs inside `ingest.py` unless noted.
+
+**What inspection of the real WA collars (6,000 rows) showed, and what the pipeline does about it**
+
+| Finding | Handling |
+|---|---|
+| 88 hole IDs appear more than once (176 rows). The same ID can point to different collars, so joining plods to them would be ambiguous. | Drop all rows of ambiguous IDs (`load_holes`), leaving 5,824 holes with a unique key. They are excluded rather than picking one at random. |
+| Hole types include `RAB` (3,256 rows) and `UNKN` (113), but plods only record `RC`, `DD` and `AC`. | The sample-data generator keeps only RC/DD/AC holes. The schema has a `CHECK` on `drill_type`, so unknown types can't get in later. |
+| `maxdepth` ranges from 1 m to 2,217 m (median 45 m). 96 holes are under 5 m or over 400 m. | Restrict to 5-400 m for realistic plods. Keep `max_depth_m` so the `EXCEEDS_HOLE_DEPTH` rule can compare metres drilled against it. |
+| Dates are stored as Unix epoch milliseconds (e.g. `637804800000`). | Convert to ISO `YYYY-MM-DD` dates on load. |
+| No nulls, no stray whitespace in IDs. | No imputation needed, and none is done. |
+
+**What inspection of the contractor Excel files showed**
+
+| Finding | Handling |
+|---|---|
+| Same data, different column names per contractor (`Metres` vs `Total Metres`, `Cost ($)` vs `Invoice AUD`). | Declarative per-contractor mapping (`CONTRACTORS`) to one canonical schema. Missing required columns fail loudly. |
+| One file has title rows above the table, so a plain `read_excel` gives wrong headers. | `find_header_row` scans for the first known header instead of hard-coding the row. |
+| Dates are real dates in one file and `dd/mm/yyyy` text in the other. | `to_datetime(..., dayfirst=True, errors="coerce")`: Australian format, and unparseable values become a rejection and not a crash. |
+| Stray whitespace and casing (`"rc "`). | `strip()` + `upper()` on shift, drill type, rig and hole IDs. |
+| Standby hours can be missing or blank. | Filled with 0 (no standby recorded). This is the only imputation; the required fields are never guessed. |
+| Hours of 0, duplicated rows. | Rejected with a reason and row number into `rejected_rows` rather than silently dropped. |
+| Implausible but valid-looking values (412 m in 9 h, a 6x cost spike). | **Not** removed. They pass validation and are flagged by `anomalies.py`, because a human should decide whether they're errors. |
+
+**Design principles**
+- **Reject, flag, or keep:** impossible values are rejected, suspicious values are flagged, and the rest is kept as-is.
+- **Nothing disappears silently:** every dropped row has a reason in `rejected_rows`.
+- **Idempotent:** re-running replaces each file's rows (`DELETE` by `source_file`), so no duplicates build up.
+- **Rules enforced twice:** in Python (`clean`) and in SQL (`CHECK`, `UNIQUE`), so a bypass of one still hits the other.
 
 ## Architecture
 
@@ -85,6 +119,10 @@ flowchart LR
 
 ![Dashboard](docs/img/dashboard.png)
 
+**Live interactive page** (GitHub Pages, `docs/index.html`): filter by date, contractor, drill type and shift; every KPI, chart, table and the map recompute in the browser.
+
+![Live site](docs/img/live_site.png)
+
 **Excel workbook, Summary sheet** (`reports/plod_workbook.xlsx`): formula-driven KPIs and tables, with date inputs in yellow and native charts.
 
 ![Excel summary](docs/img/excel_summary.png)
@@ -105,6 +143,7 @@ python -m plodtrack.ingest
 python -m plodtrack.anomalies
 python -m plodtrack.report        # open reports/dashboard.html
 python -m plodtrack.excel_workbook  # open reports/plod_workbook.xlsx
+python -m plodtrack.build_site      # open docs/index.html (the live page)
 pytest
 ```
 
