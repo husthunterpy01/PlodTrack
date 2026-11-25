@@ -37,3 +37,18 @@ def test_anomalies_flag_planted_errors(tmp_path):
     df = pd.read_sql("SELECT * FROM drill_plods", sqlite3.connect(db))
     rules = {r for _, r, _ in anomalies.detect(df)}
     assert "IMPLAUSIBLE_RATE" in rules and "COST_PER_METRE_OUTLIER" in rules
+
+
+def test_excel_workbook_has_live_constructs(tmp_path):
+    import pandas as pd
+    from openpyxl import load_workbook
+    from plodtrack.excel_workbook import DATA_COLS, build
+    df = pd.DataFrame([[pd.Timestamp("2026-09-01"), "A", "DAY", "R1", "H1", "RC", 100, 10, 1, 1500]],
+                      columns=DATA_COLS)
+    out = tmp_path / "w.xlsx"
+    build(df, out)
+    wb = load_workbook(out)
+    assert "Plods" in wb["Plods"].tables
+    assert str(wb["Summary"]["B6"].value).startswith("=SUMIFS(")
+    assert wb["Plods"].data_validations.dataValidation
+    assert {"FromDate", "MaxMph"} <= set(wb.defined_names)
