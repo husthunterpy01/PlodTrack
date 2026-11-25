@@ -23,7 +23,11 @@ h2{font-size:1em;margin:0 0 10px}#map{height:340px;border-radius:8px}
 table{border-collapse:collapse;width:100%;font-size:.85em}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
 th{color:var(--mut);font-weight:600;cursor:default}.num{text-align:right}tr.flag td{background:#fff4ed}
 .tag{display:inline-block;padding:1px 7px;border-radius:99px;background:#fde7d9;color:var(--bad);font-size:.8em}
-.scroll{max-height:340px;overflow:auto}footer{color:var(--mut);font-size:.8em;padding:0 20px 30px;max-width:1150px;margin:auto}
+.scroll{max-height:340px;overflow:auto}.scroll.tall{max-height:620px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:4px 0 16px;overflow-x:auto}
+.tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:10px 16px;color:var(--mut);font-weight:600;white-space:nowrap}
+.tabs button.on{color:var(--acc);border-bottom-color:var(--acc)}.badge{background:#fde7d9;color:var(--bad);border-radius:99px;padding:0 7px;font-size:.8em;margin-left:4px}
+.panel[hidden]{display:none}.prose{max-width:780px;line-height:1.55}.prose h2{margin-top:18px}footer{color:var(--mut);font-size:.8em;padding:0 20px 30px;max-width:1150px;margin:auto}
 </style></head><body>
 <header><h1>PlodTrack - live drilling analysis</h1>
 <p>Interactive view of the pipeline output. Plods are <b>synthetic</b>; hole locations are real WA open-file collars.</p></header>
@@ -37,17 +41,59 @@ th{color:var(--mut);font-weight:600;cursor:default}.num{text-align:right}tr.flag
  <div><label><input type="checkbox" id="onlyflag"> only flagged</label></div>
  <button id="reset">Reset</button>
 </div>
-<div class="kpis" id="kpis"></div>
-<div class="grid" style="margin-top:16px">
- <div class="card"><h2>Metres per day</h2><canvas id="cm" height="170"></canvas></div>
- <div class="card"><h2>Cost per metre by day (AUD)</h2><canvas id="cc" height="170"></canvas></div>
- <div class="card"><h2>Metres per hour vs physical limit</h2><canvas id="cs" height="170"></canvas></div>
- <div class="card"><h2>Metres by contractor and drill type</h2><canvas id="cd" height="170"></canvas></div>
-</div>
-<div class="card"><h2>Hole locations (real WA collars, Kalgoorlie area) - red = has a flagged plod</h2><div id="map"></div></div>
-<div class="card"><h2>Contractor summary</h2><div id="ctab"></div></div>
-<div class="card"><h2>Flagged entries <span id="nflag"></span></h2><div class="scroll" id="ftab"></div></div>
-<div class="card"><h2>Plods (filtered)</h2><div class="scroll" id="ptab"></div></div>
+<nav class="tabs" id="tabs">
+ <button data-tab="overview" class="on">Overview</button><button data-tab="analysis">Analysis</button>
+ <button data-tab="map">Map</button><button data-tab="flags">Flagged <span id="nflagtab" class="badge"></span></button>
+ <button data-tab="data">Data</button><button data-tab="about">About</button>
+</nav>
+<section class="panel" id="p-overview">
+ <div class="kpis" id="kpis"></div>
+ <div class="grid" style="margin-top:16px">
+  <div class="card"><h2>Metres per day</h2><canvas id="cm" height="170"></canvas></div>
+  <div class="card"><h2>Cost per metre by day (AUD)</h2><canvas id="cc" height="170"></canvas></div>
+ </div>
+ <div class="card"><h2>Contractor summary</h2><div id="ctab"></div></div>
+</section>
+<section class="panel" id="p-analysis" hidden>
+ <div class="grid">
+  <div class="card"><h2>Metres vs productive hours (red = flagged)</h2><canvas id="cs" height="190"></canvas></div>
+  <div class="card"><h2>Metres by contractor and drill type</h2><canvas id="cd" height="190"></canvas></div>
+ </div>
+ <div class="card"><h2>By drill type</h2><div id="dtab"></div></div>
+</section>
+<section class="panel" id="p-map" hidden>
+ <div class="card"><h2>Hole locations (real WA collars, Kalgoorlie area) - red = has a flagged plod</h2><div id="map"></div></div>
+</section>
+<section class="panel" id="p-flags" hidden>
+ <div class="card"><h2>Flagged entries <span id="nflag"></span></h2><div class="scroll" id="ftab"></div></div>
+</section>
+<section class="panel" id="p-data" hidden>
+ <div class="card"><h2>Plods (filtered)</h2><div class="scroll tall" id="ptab"></div></div>
+</section>
+<section class="panel" id="p-about" hidden>
+ <div class="card prose">
+  <h2>About this project</h2>
+  <p><b>PlodTrack</b> ingests messy contractor Excel files, stores them in SQL, flags unusual entries and reports on them.
+  Source: <a href="https://github.com/husthunterpy01/PlodTrack">github.com/husthunterpy01/PlodTrack</a>.</p>
+  <h2>The data</h2>
+  <p><b>Real:</b> WA open-file drillhole collars (Kalgoorlie area, CC BY 4.0), used for hole IDs, depth and map locations.
+  <b>Synthetic:</b> the 239 contractor plods (2 invented contractors, Sep 2026). Costs, productivity and contractor differences are
+  generated, so they are not real operational figures.</p>
+  <h2>Pipeline</h2>
+  <p>Excel files &rarr; per-contractor column mapping, header detection, cleaning and validation &rarr; SQLite (constraints, views)
+  &rarr; anomaly rules &rarr; dashboard, Excel workbook and this page. Rows that fail validation are rejected with a reason, never dropped silently.</p>
+  <h2>Anomaly rules</h2>
+  <ul><li><b>IMPLAUSIBLE_RATE</b> - metres per productive hour above the physical limit for the drill type (RC 20, DD 8, AC 30).</li>
+  <li><b>EXCEEDS_HOLE_DEPTH</b> - more metres drilled than the registered hole depth.</li>
+  <li><b>STANDBY_EXCEEDS_HOURS</b> - standby longer than hours worked.</li>
+  <li><b>COST_PER_METRE_OUTLIER</b> - robust (median/MAD) outlier within the drill type, and more than 50% from the median.</li></ul>
+  <h2>Key takeaways</h2>
+  <ul><li>Diamond (DD) drilling is ~5% of metres but ~16% of cost (~$50/m vs ~$16/m for RC).</li>
+  <li>The two contractors are within ~5% on cost per metre.</li>
+  <li>Day and night shifts perform the same; standby is about 3% of hours.</li>
+  <li>Differences between contractors and drill types are built into the generator, not findings about real operations.</li></ul>
+ </div>
+</section>
 </main>
 <footer>Rules: metres/hour above a physical limit per drill type, metres beyond registered hole depth, standby &gt; hours, and cost-per-metre outliers (robust MAD z-score). Rebuild with <code>python -m plodtrack.build_site</code>.</footer>
 <script>
@@ -87,7 +133,9 @@ function render(){
  table('ctab',[{h:'Contractor',k:'c'},{h:'Plods',k:'n',n:1},{h:'Metres',n:1,f:r=>fmt(r.m)},{h:'Cost (AUD)',n:1,f:r=>'$'+fmt(r.cost)},{h:'$/m',n:1,f:r=>'$'+fmt(r.cost/r.m,2)},{h:'m/h',n:1,f:r=>fmt(r.m/r.h,1)},{h:'Standby %',n:1,f:r=>fmt(100*r.sb/r.h,1)+'%'}],
   cons.map(c=>{const x=R.filter(p=>p.contractor===c);return{c,n:x.length,m:x.reduce((a,p)=>a+p.metres_drilled,0)||0,cost:x.reduce((a,p)=>a+p.cost_aud,0),h:x.reduce((a,p)=>a+p.hours_worked,0)||1,sb:x.reduce((a,p)=>a+p.standby_hours,0)}}).filter(r=>r.n));
  const fl=R.filter(p=>F[p.plod_id]).flatMap(p=>F[p.plod_id].map(f=>({...p,...f})));
- $('nflag').textContent='('+fl.length+')';
+ $('nflag').textContent='('+fl.length+')';$('nflagtab').textContent=fl.length;
+ table('dtab',[{h:'Drill type',k:'t'},{h:'Plods',k:'n',n:1},{h:'Metres',n:1,f:r=>fmt(r.m)},{h:'Cost (AUD)',n:1,f:r=>'$'+fmt(r.cost)},{h:'$/m',n:1,f:r=>'$'+fmt(r.m?r.cost/r.m:0,2)},{h:'m/h',n:1,f:r=>fmt(r.h?r.m/r.h:0,1)}],
+  types.map(t=>{const x=R.filter(p=>p.drill_type===t);return{t,n:x.length,m:x.reduce((a,p)=>a+p.metres_drilled,0),cost:x.reduce((a,p)=>a+p.cost_aud,0),h:x.reduce((a,p)=>a+p.hours_worked,0)}}).filter(r=>r.n));
  table('ftab',[{h:'Date',k:'plod_date'},{h:'Contractor',k:'contractor'},{h:'Rig',k:'rig_id'},{h:'Hole',k:'hole_id'},{h:'Rule',f:r=>`<span class="tag">${r.rule}</span>`},{h:'Detail',k:'detail'}],fl);
  table('ptab',[{h:'Date',k:'plod_date'},{h:'Contractor',k:'contractor'},{h:'Shift',k:'shift'},{h:'Rig',k:'rig_id'},{h:'Hole',k:'hole_id'},{h:'Type',k:'drill_type'},
   {h:'Metres',n:1,k:'metres_drilled'},{h:'Hours',n:1,k:'hours_worked'},{h:'Standby',n:1,k:'standby_hours'},{h:'Cost',n:1,f:r=>'$'+fmt(r.cost_aud,2)},{h:'$/m',n:1,f:r=>r.metres_drilled?'$'+fmt(r.cost_aud/r.metres_drilled,2):'-'}],R,r=>F[r.plod_id]?'flag':'');
@@ -98,5 +146,11 @@ function render(){
 }
 map=L.map('map').setView([-30.8,121.4],9);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
 layer=L.layerGroup().addTo(map);
+function showTab(t){document.querySelectorAll('.panel').forEach(p=>p.hidden=p.id!=='p-'+t);
+ document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+ history.replaceState(null,'','#'+t);
+ Object.values(charts).forEach(c=>c.resize());map.invalidateSize();}
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 ['from','to','contractor','dtype','shift','onlyflag'].forEach(i=>$(i).addEventListener('change',render));$('reset').onclick=reset;reset();
+const h0=location.hash.slice(1);if(document.getElementById('p-'+h0))showTab(h0);
 </script></body></html>

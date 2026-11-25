@@ -119,7 +119,7 @@ flowchart LR
 
 ![Dashboard](docs/img/dashboard.png)
 
-**Live interactive page** (GitHub Pages, `docs/index.html`): filter by date, contractor, drill type and shift; every KPI, chart, table and the map recompute in the browser.
+**Live interactive page** (GitHub Pages, `docs/index.html`): shared filters (date, contractor, drill type, shift) above six tabs - Overview, Analysis, Map, Flagged, Data and About. Every KPI, chart, table and the map recompute in the browser, and the URL hash (e.g. `#map`) links straight to a tab.
 
 ![Live site](docs/img/live_site.png)
 
