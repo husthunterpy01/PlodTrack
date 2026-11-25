@@ -14,7 +14,7 @@ The bundled sample data is **synthetic**.
 | Dashboards & reports | `report.py` → `reports/dashboard.html` + `reports/weekly_report.xlsx` |
 | Flag unusual entries | `anomalies.py` – explainable rules (physical m/h limits, robust MAD cost outliers) |
 | Interactive Excel workbook | `excel_workbook.py` → `reports/plod_workbook.xlsx` – Excel Table, structured refs, SUMIFS/COUNTIFS/INDEX-MATCH, named ranges, data validation, conditional formatting, native charts |
-| AI-assisted extraction | `ai_extract.py` – LLM extraction whose output is validated and routed to human review |
+| AI-assisted extraction | `ai_extract.py` – LLM extraction (Claude or Groq) whose output is parsed defensively, validated with the ingest rules, checked that every value actually appears in the source text, and routed to human review when it fails |
 
 ## The data
 
@@ -157,6 +157,21 @@ Unlike `weekly_report.xlsx` (a static data dump), this one is built to be used a
 | **Limits** | Yellow assumption cells (`MaxMph`, `DrillTypes` named ranges). Change a limit and the flags, counts and charts recalculate. |
 
 Sample values were cross-checked: recalculating the workbook in LibreOffice gives the same total metres and cost as the SQL database.
+
+## AI extraction: how it was tested
+`ai_extract.py` turns a free-text shift report into a plod record. The model is never trusted: output is parsed tolerantly (code fences, surrounding prose), validated with the same rules as the Excel ingest, then **grounded** (each value must appear in the source text). Anything failing goes to `needs_review` with the reasons.
+
+Tested live against Groq (`openai/gpt-oss-120b`, set `GROQ_API_KEY`) with 5 reports; results were identical across 2 runs:
+
+| Report | Outcome |
+|---|---|
+| Complete, clean report | Extracted, no review needed |
+| Cost not yet invoiced | Extracted, `cost_aud` left null (allowed) |
+| Zero hours worked | Flagged `hours_worked` |
+| "Evening shift" (not DAY/NIGHT) | Flagged `shift`. An earlier version silently mapped it to NIGHT; the prompt and grounding check fixed that |
+| Toolbox talk, no plod at all | Every required field flagged |
+
+Limits: 5 hand-written reports is a smoke test, not an accuracy benchmark. Results can vary between models and runs. Records that pass are returned but not yet loaded into the database.
 
 ## Ideas to extend
 - Add a costs/budget table and variance-to-budget view
