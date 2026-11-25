@@ -203,6 +203,30 @@ These describe how the pipeline behaves on the bundled **synthetic** dataset (23
 - 67.8% of plods reaching their registered hole depth is a generator artifact (shallow real holes are capped at their depth).
 - One month of data: no trend, budget or inventory analysis is possible.
 
+## Known limitations
+
+Honest list of what is not handled yet, roughly in priority order.
+
+**Bugs and silent failures**
+1. **One bad file stops the whole ingest.** `ingest.main` has no per-file error handling, so an unmapped contractor or a missing required column raises, later files never load and nothing is committed. It should skip, log and continue.
+2. **`INSERT OR IGNORE` hides cross-file conflicts.** The same contractor, date, shift, rig and hole in two different files drops the second row with no entry in `rejected_rows`. Duplicates are only reported within one file.
+3. **Standby is not checked at ingest.** `standby_hours > hours_worked` and negative standby are accepted into the database; only the anomaly step catches the first. (The AI validator does check negative standby.)
+4. **Plods can reference unknown holes.** No foreign key and no check against `holes`; unknown holes just skip the depth rule.
+5. **No date sanity check.** A parseable date such as 1999 or 2099 is accepted.
+6. **Rejected-row numbers are approximate.** For files with title rows the reported Excel row is offset by the header position.
+
+**Contractor onboarding**
+7. New contractors need a code change: layouts are hard-coded in `CONTRACTORS` and matched by filename prefix.
+8. Only `.xlsx` is read; `.xls`, `.csv` and multi-sheet workbooks are ignored.
+
+**Tests and automation**
+9. `load_wa_drillholes.py`, `report.py` and `build_site.py` have no tests. The live Groq extraction was run by hand, not in the test suite.
+10. Nothing runs automatically: no folder watcher, scheduler, CI or logging.
+
+**Not built (from the job description)**
+11. Mining inventory (stockpile tonnes and grade), safety metrics, asset management, and budget/variance.
+12. AI extraction is not wired into the database, and there is no review queue or UI for flagged rows.
+
 ## Ideas to extend
 - Add a costs/budget table and variance-to-budget view
 - Mining inventory (stockpile tonnes & grade) tables
