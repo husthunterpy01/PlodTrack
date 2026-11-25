@@ -4,7 +4,7 @@ A small project for tracking exploration drilling and costs: ingest messy contra
 store them in a SQL database, flag unusual entries, and produce dashboards and reports.
 The bundled sample data is **synthetic**.
 
-**Live demo:** https://husthunterpy01.github.io/mining_analysis/ (interactive filters, charts and a map of the real WA holes; built by `python -m plodtrack.build_site` into `docs/index.html`).
+**Live demo:** https://husthunterpy01.github.io/PlodTrack/ (interactive filters, charts and a map of the real WA holes; built by `python -m plodtrack.build_site` into `docs/index.html`).
 
 | Capability | Where it lives |
 |---|---|
